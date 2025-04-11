@@ -73,9 +73,11 @@ def createBook(book):
         conn = connect(**db_config)
         cursor = conn.cursor()
         cursor.execute("insert into book(id,title,author,genre,year_published,summary) values(%s,%s,%s,%s,%s,%s)", (str(book_dict["id"]), book_dict["title"], book_dict["author"], book_dict["genre"], book_dict["year_published"], ""))
-        updateSummary(book_dict["name"])
+        # updateSummary(book_dict["name"])
         conn.commit()
+        conn.close()
         return book_dict
+
 
     except Exception as e:
         print(e)
@@ -89,6 +91,11 @@ async def updateSummary(book_dict):
     minio_client = Minio(os.getenv("minio_url"), access_key=os.getenv("minio_access_key"), secret_key=os.getenv("minio_secret_key"), secure=False)
     file = minio_client.get_object("books/"+genre, file_name)
     content = file.read().decode('utf-8')
+    summary = generateSummary(content) # call LLM to generate summary
+    return summary
+
+def generateSummary(content):
+    # call LLM to generate summary
     return "summary of the book"
 def getBook(book_id:uuid.UUID):
     conn = connect(**db_config)
