@@ -1,14 +1,12 @@
-import json
 import os
 import uuid
 
-from fastapi import requests
 from minio import Minio
 import dotenv
-import pandas as pd
 from pandas import DataFrame as df
-from dotenv import dotenv_values
 from psycopg2 import connect
+
+from AIUtil import summarize_reviews, generateSummary
 
 # create connections to database
 
@@ -27,17 +25,19 @@ db_config = {
 
 def init_db():
     # create table if not exist
+    # create table schema if not exit
 
-    book_table = "create table book(id UUID PRIMARY KEY,title varchar(50),author varchar(50),genre varchar(30), year_published int,summary varchar(5000))"
-    user_table = "create table users(id UUID primary key, name varchar(50))"
-    review_table = "create table reviews(id UUID PRIMARY KEY, book_id UUID, user_id UUID, review text, rating decimal, constraint fk_user FOREIGN KEY(user_id) references users(id) on delete cascade, constraint fk_book FOREIGN KEY(book_id) references book(id) on delete cascade )"
-
+    book_table = "create table if not exists book(id UUID PRIMARY KEY,title varchar(50),author varchar(50),genre varchar(30), year_published int,summary varchar(5000))"
+    user_table = "create table if not exists users(id UUID primary key, name varchar(50) UNIQUE, password varchar(100))"
+    review_table = "create table if not exists reviews(id UUID PRIMARY KEY, book_id UUID, user_id UUID, review text, rating decimal, constraint fk_user FOREIGN KEY(user_id) references users(id) on delete cascade, constraint fk_book FOREIGN KEY(book_id) references book(id) on delete cascade )"
     conn = connect(**db_config)
-    conn.cursor.execute(book_table)
-    conn.cursor.execute(user_table)
-    conn.cursor().execute(review_table)
+    cursor = conn.cursor()
+    cursor.execute(book_table)
+    cursor.execute(user_table)
+    cursor.execute(review_table)
     conn.commit()
-
+    conn.close()
+    print("db initialized")
 
 def createUser(user):
     try:
@@ -48,13 +48,13 @@ def createUser(user):
         print(user_dict)
         conn = connect(**db_config)
         cursor = conn.cursor()
-        cursor.execute("insert into users(id,name) values(%s,%s)", (str(user_dict["id"]), user_dict["name"]))
+        cursor.execute("insert into users(id,name,password) values(%s,%s,%s)", (str(user_dict["id"]), user_dict["name"], user_dict["password"]))
         conn.commit()
         return user_dict
 
     except Exception as e:
         print(e)
-        return None
+        raise e
 
 
 def getUser(user_id: uuid.UUID):
@@ -80,7 +80,7 @@ def createBook(book):
         conn.commit()
         conn.close()
 
-        updateSummary(book_dict["id"], book_dict["name"])
+        # updateSummary(book_dict["id"], book_dict["name"])
         return book_dict
 
     except Exception as e:
@@ -112,32 +112,6 @@ async def updateSummary(id, content):
     conn.close()
 
 
-async def generateSummary(content):
-    # call LLM to generate summary
-    url = os.getenv("llm_url")
-    headers = {
-        "content-type": "application/json",
-        "accept": "application/json"
-    }
-
-    requestObj = {
-        "model": "llama3.2",
-        "message": [{"role": "system",
-                     "content": "You are an assistant, who reads the content of a book and generate the summary of the book."},
-                    {"role": "user", "content": content}],
-        "stream": False
-    }
-
-    response = requests.post(url, headers=headers, json=requestObj)
-
-    if (response.status_code != 200):
-        print("Error in generating summary")
-        return None
-    response = response.json()
-    summary_content = response.get("message").get("content")
-    return summary_content
-
-
 def getBook(book_id: uuid.UUID):
     conn = connect(**db_config)
     cursor = conn.cursor()
@@ -161,6 +135,7 @@ def getBook(book_id: uuid.UUID):
     books = cursor.fetchone()
     return books
 
+
 def deleteBook(book_id: uuid.UUID):
     try:
         conn = connect(**db_config)
@@ -172,6 +147,8 @@ def deleteBook(book_id: uuid.UUID):
     except Exception as e:
         print(e)
         return None
+
+
 def updateBook(book):
     try:
         book_dict = book.dict()
@@ -188,12 +165,14 @@ def updateBook(book):
         return None
 
 
-def createReview(book_id,review):
+def createReview(book_id, review, user_id):
     try:
         if review.id is None:
             review.id = uuid.uuid4()
 
         review_dict = review.dict()
+        review_dict["book_id"] = book_id
+        review_dict["user_id"] = user_id
         conn = connect(**db_config)
         cursor = conn.cursor()
         cursor.execute("insert into reviews(id,book_id,user_id,review,rating) values(%s,%s,%s,%s,%s)", (
@@ -221,9 +200,9 @@ def getReviews(book_id: uuid.UUID):
 
 def summarizeReviews(reviews):
     summary = {}
-    df_reviews = df(reviews, columns=["review", "rating"])
+    df_reviews = df(reviews, columns=['id', 'book_id', 'user_id', 'review', 'rating'])
     reviews_list = df_reviews.get("review")
-    summarized_reviews = summarize(reviews_list)
+    summarized_reviews = summarize_reviews(reviews_list)
     summary['summary'] = summarized_reviews
 
     rating_avg = df_reviews.get("rating")
@@ -233,20 +212,28 @@ def summarizeReviews(reviews):
     return summary
 
 
-def summarize(reviews):
-    # call LLM to summarize the reviews
-    return " ".join(reviews)
-
 def getBookSummary(book_id: uuid.UUID):
     conn = connect(**db_config)
     cursor = conn.cursor()
     cursor.execute("select summary from book where id = %s", (str(book_id),))
     book_details = cursor.fetchone()
-    if(book_details is None):
+    if (book_details is None):
         return None
     summary = book_details[5]
-    if(summary is None):
+    if (summary is None):
         content = book_details[4]
         summary = generateSummary(content)
 
     return summary
+
+
+def get_user_from_db(user_name: str):
+    conn = connect(**db_config)
+    cursor = conn.cursor()
+    cursor.execute("select * from users where name = %s", (user_name,))
+    user = cursor.fetchone()
+    if user is None:
+        return None
+    # create dictionary from user
+    user_dict = {'id': user[0], 'name': user[1], 'password': user[2]}
+    return user_dict
