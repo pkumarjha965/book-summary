@@ -14,14 +14,14 @@ from AIUtil import summarize_reviews, generateSummary
 # create table schema
 # execute the connections in db
 dotenv.load_dotenv()
-db_config = {
-    "dbname": "bms",
-    "host": "localhost",
-    "port": "5432",
-    "user": "postgres",
-    "password": "postgres123"
-}
 
+db_config = {
+    "dbname": os.getenv("database_name"),
+    "host": os.getenv("database_host"),
+    "port": os.getenv("database_port"),
+    "user": os.getenv("database_user"),
+    "password": os.getenv("database_password")
+}
 
 def init_db():
     # create table if not exist
