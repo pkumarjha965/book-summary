@@ -1,4 +1,7 @@
 .idea/*
 __pycache__/*
 com/__pycache__/*
+tests/__pycache__/*
+models/__pycache__/*
+service/__pycache__/*
 
