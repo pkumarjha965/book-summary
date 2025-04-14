@@ -39,6 +39,7 @@ def init_db():
     conn.close()
     print("db initialized")
 
+
 def createUser(user):
     try:
         if user.id is None:
@@ -48,7 +49,8 @@ def createUser(user):
         print(user_dict)
         conn = connect(**db_config)
         cursor = conn.cursor()
-        cursor.execute("insert into users(id,name,password) values(%s,%s,%s)", (str(user_dict["id"]), user_dict["name"], user_dict["password"]))
+        cursor.execute("insert into users(id,name,password) values(%s,%s,%s)",
+                       (str(user_dict["id"]), user_dict["name"], user_dict["password"]))
         conn.commit()
         return user_dict
 
@@ -63,6 +65,28 @@ def getUser(user_id: uuid.UUID):
     cursor.execute("select * from users where id = %s", (str(user_id),))
     user = cursor.fetchone()
     return user
+
+
+def getBooks():
+    conn = connect(**db_config)
+    cursor = conn.cursor()
+    cursor.execute("select * from book")
+    books = cursor.fetchall()
+    conn.close()
+
+    # convert to dictionary
+    books_list = []
+    for book in books:
+        book_dict = {
+            'id': book[0],
+            'title': book[1],
+            'author': book[2],
+            'genre': book[3],
+            'year_published': book[4],
+            'summary': book[5]
+        }
+        books_list.append(book_dict)
+    return books_list
 
 
 def createBook(book):
@@ -103,7 +127,6 @@ async def getBookContent(book_dict):
 
 async def updateSummary(id, content):
     # call LLM to generate summary
-
     summary = await generateSummary(content)  # call LLM to generate summary
     conn = connect(**db_config)
     cursor = conn.cursor()

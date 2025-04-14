@@ -14,7 +14,7 @@ book_summary_prompt = "You are an assistant, generate summary for the following 
                     "information or text"
 
 
-def summarize_reviews(reviews):
+async def summarize_reviews(reviews):
     # call LLM to summarize the reviews
     url = os.getenv("llm_endpoint")+'/api/chat'
     headers = {

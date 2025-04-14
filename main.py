@@ -10,7 +10,7 @@ from passlib.context import CryptContext
 from psycopg2 import connect
 from pydantic import BaseModel
 from pydantic.v1 import Field
-
+from models.model import Book, Review, UserResponse, responseModel
 import datahandler
 
 app = FastAPI()
@@ -106,32 +106,6 @@ class User(BaseModel):
     password: str = Field(..., example="secret")
 
 
-class UserResponse(BaseModel):
-    id: Optional[uuid.UUID] = uuid.uuid4()
-    name: str = Field(..., example="John Doe")
-
-
-class responseModel(BaseModel):
-    id: Optional[uuid.UUID] = uuid.uuid4()
-    message: str = Field(..., example="User created successfully")
-    status: bool = Field(..., example=True)
-
-
-class Book(BaseModel):
-    id: Optional[uuid.UUID] = uuid.uuid4()
-    title: str = Field(..., example="The Alchemist")
-    author: str = Field(..., example="Paulo Coelho")
-    genre: str = Field(..., example="Adventure")
-    year_published: int = Field(..., example=1988)
-    summary: Optional[str] = Field(default="", example="summary of the book")
-
-
-class Review(BaseModel):
-    id: Optional[uuid.UUID] = uuid.uuid4()
-    review: str = Field(..., example="This book is amazing")
-    rating: float = Field(..., example=4.5)
-
-
 @app.get("/user/{user_name}", summary="Get user by name", tags=["user"])
 def getUser(user_name: str):
     user = datahandler.getUser(user_name)
@@ -141,7 +115,7 @@ def getUser(user_name: str):
 
 
 @app.post("/user", summary="Create user", tags=["user"])
-def createUser(user: User):
+async def createUser(user: User):
     try:
         existing_user = datahandler.get_user_from_db(user.name)
         if existing_user is not None:
@@ -163,9 +137,18 @@ def init_db():
     datahandler.init_db()
 
 
-@app.post("/book", summary="Create book", tags=["book"])
-def createBook(book: Book, current_user: dict = Depends(get_current_user)):
+@app.get("/book", summary="Get all books", tags=["book"])
+async def getBooks():
+    try:
+        books = datahandler.getBooks()
+        return books
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Failed to fetch books")
 
+
+@app.post("/book", summary="Create book", tags=["book"])
+async def createBook(book: Book, current_user: dict = Depends(get_current_user)):
     try:
         book_res = datahandler.createBook(book)
         print("Book added by " + str(current_user.get("name")) + " with id " + str(book_res["id"]))
@@ -176,19 +159,19 @@ def createBook(book: Book, current_user: dict = Depends(get_current_user)):
 
 
 @app.put("/book", summary="Update book", tags=["book"])
-def updateBook(book: Book):
-    bookRes = datahandler.updateBook(book)
-    return bookRes
+async def updateBook(book: Book):
+    book_res = datahandler.updateBook(book)
+    return book_res
 
 
 @app.delete("/book/{book_id}", summary="Delete book", tags=["book"])
-def deleteBook(book_id: uuid.UUID):
+async def deleteBook(book_id: uuid.UUID):
     id = datahandler.deleteBook(book_id)
     return responseModel(id=id, message="Book deleted successfully", status=True)
 
 
 @app.get("/book/{book_id}", response_model=Book, summary="Get book by Id", tags=["book"])
-def getBook(book_id: uuid.UUID):
+async def getBook(book_id: uuid.UUID):
     book = datahandler.getBook(book_id)
     # convert to Book model
     book = Book(id=book[0], title=book[1], author=book[2], genre=book[3], year_published=book[4], summary=book[5])
@@ -196,34 +179,32 @@ def getBook(book_id: uuid.UUID):
 
 
 @app.get("/book/{book_id}/review", summary="Get review by book Id", tags=["book"])
-def getReview(book_id: uuid.UUID):
+async def getReview(book_id: uuid.UUID):
     reviews = datahandler.getReviews(book_id)
     # convert to Review model
-    reviewModels = []
-    review = reviews[0]
-    review_model = Review(id=review[0], book_id=review[1], user_id=review[2], review=review[3], rating=review[4])
+    review_models = []
     for review in reviews:
-        reviewModels.append(
+        review_models.append(
             Review(id=review[0], book_id=review[1], user_id=review[2], review=review[3], rating=review[4]))
-    print(reviewModels)
-    return reviewModels
+    print(review_models)
+    return review_models
 
 
 @app.get("/book/{book_id}/summary", summary="Get book summary", tags=["book"])
-def getBookSummary(book_id: uuid.UUID):
+async def getBookSummary(book_id: uuid.UUID):
     summary = datahandler.getBookSummary(book_id)
     return summary
 
 
 @app.post("/book/{id}/review", summary="Add review to a book", tags=["book"])
-def createReview(book_id: uuid.UUID, review: Review, current_user: dict = Depends(get_current_user)):
+async def createReview(book_id: uuid.UUID, review: Review, current_user: dict = Depends(get_current_user)):
     user_id = current_user.get("id")
     review_res = datahandler.createReview(book_id, review, user_id)
     return responseModel(id=review_res["id"], message="Review created successfully", status=True)
 
 
 @app.get("/book/{book_id}/review/summary", summary="Get review  summary by book Id", tags=["book"])
-def getReviewSummary(book_id: uuid.UUID):
+async def getReviewSummary(book_id: uuid.UUID):
     reviews = datahandler.getReviews(book_id)
     summary = datahandler.summarizeReviews(reviews)
     return summary
