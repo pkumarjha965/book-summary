@@ -7,11 +7,10 @@ from fastapi import FastAPI
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from psycopg2 import connect
 from pydantic import BaseModel
 from pydantic.v1 import Field
-from models.model import Book, Review, UserResponse, responseModel
-import datahandler
+from models.model import Book, Review, UserResponse, responseModel, User
+from service import datahandler
 
 app = FastAPI()
 
@@ -98,12 +97,6 @@ async def login(username: str, password: str):
         data={"sub": user["name"]}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
-
-class User(BaseModel):
-    id: Optional[uuid.UUID] = uuid.uuid4()
-    name: str = Field(..., example="John Doe")
-    password: str = Field(..., example="secret")
 
 
 @app.get("/user/{user_name}", summary="Get user by name", tags=["user"])
