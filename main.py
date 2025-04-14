@@ -101,10 +101,10 @@ async def login(username: str, password: str):
 
 @app.get("/user/{user_name}", summary="Get user by name", tags=["user"])
 def getUser(user_name: str):
-    user = datahandler.getUser(user_name)
+    user = datahandler.get_user_from_db(user_name)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return UserResponse(id=user[0], name=user[1])
+    return UserResponse(id=user.get('id'), name=user.get('name'))
 
 
 @app.post("/user", summary="Create user", tags=["user"])

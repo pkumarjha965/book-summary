@@ -5,8 +5,8 @@ from minio import Minio
 import dotenv
 from pandas import DataFrame as df
 from psycopg2 import connect
-
 from AIUtil import summarize_reviews, generateSummary
+from contextlib import contextmanager
 
 # create connections to database
 
@@ -22,6 +22,15 @@ db_config = {
     "user": os.getenv("database_user"),
     "password": os.getenv("database_password")
 }
+
+
+@contextmanager
+def db_connection():
+    conn = connect(**db_config)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 def init_db():
     # create table if not exist
@@ -41,56 +50,53 @@ def init_db():
 
 
 def createUser(user):
-    try:
-        if user.id is None:
-            user.id = uuid.uuid4()
 
-        user_dict = user.dict()
-        print(user_dict)
-        conn = connect(**db_config)
+    if user.id is None:
+        user.id = uuid.uuid4()
+
+    user_dict = user.dict()
+    print(user_dict)
+    with db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("insert into users(id,name,password) values(%s,%s,%s)",
                        (str(user_dict["id"]), user_dict["name"], user_dict["password"]))
         conn.commit()
         return user_dict
 
-    except Exception as e:
-        print(e)
-        raise e
-
 
 def getUser(user_id: uuid.UUID):
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select * from users where id = %s", (str(user_id),))
-    user = cursor.fetchone()
-    return user
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("select * from users where id = %s", (str(user_id),))
+        user = cursor.fetchone()
+        return user
 
 
 def getBooks():
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select * from book")
-    books = cursor.fetchall()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("select * from book")
+        books = cursor.fetchall()
+        conn.close()
 
-    # convert to dictionary
-    books_list = []
-    for book in books:
-        book_dict = {
-            'id': book[0],
-            'title': book[1],
-            'author': book[2],
-            'genre': book[3],
-            'year_published': book[4],
-            'summary': book[5]
-        }
-        books_list.append(book_dict)
-    return books_list
+        # convert to dictionary
+        books_list = []
+        for book in books:
+            book_dict = {
+                'id': book[0],
+                'title': book[1],
+                'author': book[2],
+                'genre': book[3],
+                'year_published': book[4],
+                'summary': book[5]
+            }
+            books_list.append(book_dict)
+        return books_list
 
 
 def createBook(book):
-    try:
+
+    with db_connection() as conn:
         if book.id is None:
             book.id = uuid.uuid4()
 
@@ -102,14 +108,6 @@ def createBook(book):
             book_dict["year_published"],
             ""))
         conn.commit()
-        conn.close()
-
-        # updateSummary(book_dict["id"], book_dict["name"])
-        return book_dict
-
-    except Exception as e:
-        print(e)
-        return None
 
 
 async def getBookContent(book_dict):
@@ -134,29 +132,29 @@ async def updateSummary(id, content):
     conn.commit()
     conn.close()
 
-
-def getBook(book_id: uuid.UUID):
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select * from book where id = %s", (str(book_id),))
-    book = cursor.fetchone()
-    return book
+#
+# def getBook(book_id: uuid.UUID):
+#     with db_connection() as conn:
+#         cursor = conn.cursor()
+#         cursor.execute("select * from book where id = %s", (str(book_id),))
+#         book = cursor.fetchone()
+#         return book
 
 
 def getBook():
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select * from book")
-    books = cursor.fetchall()
-    return books
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("select * from book")
+        books = cursor.fetchall()
+        return books
 
 
 def getBook(book_id: uuid.UUID):
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select * from book where id = %s", (str(book_id),))
-    books = cursor.fetchone()
-    return books
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("select * from book where id = %s", (str(book_id),))
+        books = cursor.fetchone()
+        return books
 
 
 def deleteBook(book_id: uuid.UUID):
@@ -169,6 +167,7 @@ def deleteBook(book_id: uuid.UUID):
 
     except Exception as e:
         print(e)
+        conn.close()
         return None
 
 
@@ -185,6 +184,7 @@ def updateBook(book):
 
     except Exception as e:
         print(e)
+        conn.close()
         return None
 
 
@@ -206,19 +206,20 @@ def createReview(book_id, review, user_id):
 
     except Exception as e:
         print(e)
+        conn.close()
         return None
 
 
 def getReviews(book_id: uuid.UUID):
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select * from reviews where book_id = %s", (str(book_id),))
-    reviews = cursor.fetchall()
-    # summary = summarizeReviews(reviews)
-    # convert revies to dictionary
-    reviews_list = []
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("select * from reviews where book_id = %s", (str(book_id),))
+        reviews = cursor.fetchall()
+        # summary = summarizeReviews(reviews)
+        # convert revies to dictionary
+        reviews_list = []
 
-    return reviews
+        return reviews
 
 
 def summarizeReviews(reviews):
@@ -236,27 +237,40 @@ def summarizeReviews(reviews):
 
 
 def getBookSummary(book_id: uuid.UUID):
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select summary from book where id = %s", (str(book_id),))
-    book_details = cursor.fetchone()
-    if (book_details is None):
-        return None
-    summary = book_details[5]
-    if (summary is None):
-        content = book_details[4]
-        summary = generateSummary(content)
 
+    try:
+        conn = connect(**db_config)
+        cursor = conn.cursor()
+        cursor.execute("select summary from book where id = %s", (str(book_id),))
+        book_details = cursor.fetchone()
+        if book_details is None:
+            return None
+        summary = book_details[5]
+        if summary is None:
+            content = book_details[4]
+            summary = generateSummary(content)
+    except Exception as e:
+        print(e)
+        return None
+    finally:
+        conn.close()
     return summary
 
 
 def get_user_from_db(user_name: str):
-    conn = connect(**db_config)
-    cursor = conn.cursor()
-    cursor.execute("select * from users where name = %s", (user_name,))
-    user = cursor.fetchone()
-    if user is None:
+    try:
+        conn = connect(**db_config)
+        cursor = conn.cursor()
+        cursor.execute("select * from users where name = %s", (user_name,))
+        user = cursor.fetchone()
+        if user is None:
+            return None
+        # create dictionary from user
+        user_dict = {'id': user[0], 'name': user[1], 'password': user[2]}
+    except Exception as e:
+        print(e)
         return None
-    # create dictionary from user
-    user_dict = {'id': user[0], 'name': user[1], 'password': user[2]}
+    finally:
+        conn.close()
+
     return user_dict
